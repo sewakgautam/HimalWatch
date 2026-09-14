@@ -9,6 +9,8 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
+from .build.static_bundle import build_static_bundle
+from .extract.glaciers import extract_glaciers
 from .extract.lakes import extract_lakes
 from .loaders.load_boundaries import load_boundaries
 from .loaders.load_icimod_lakes import load_icimod_lakes
@@ -88,6 +90,45 @@ def extract_lakes_command(
         dry_run=dry_run,
     )
     typer.echo(f"Wrote {count} lakes to {out_path}")
+
+
+@app.command(name="extract-glaciers")
+def extract_glaciers_command(
+    basin: str = typer.Option(..., "--basin", help="Basin id, e.g. koshi"),
+    year: int = typer.Option(..., "--year", help="Extraction year"),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Skip the real Sentinel-2 pull and write synthetic glaciers instead.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Extracts glaciers for one basin/year from a Sentinel-2 late-ablation
+    composite. See docs/HIMALWATCH_SPEC.md §5.3.
+    """
+    _configure_logging(verbose)
+    out_path = _DATA_DIR / "glaciers" / f"{basin}-{year}.geojson"
+    count = extract_glaciers(
+        basin=basin,
+        year=year,
+        out_path=out_path,
+        reference_dir=_REFERENCE_DIR,
+        dry_run=dry_run,
+    )
+    typer.echo(f"Wrote {count} glaciers to {out_path}")
+
+
+@app.command(name="build-static")
+def build_static_command(
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Merges every data/{glaciers,lakes}/{basin}-{year}.geojson into the
+    deploy-ready static bundle: index.json, manifest.json, per-basin/
+    per-year GeoJSON, PMTiles, and CSV/GeoJSON downloads.
+    """
+    _configure_logging(verbose)
+    summary = build_static_bundle(_DATA_DIR)
+    typer.echo(f"Manifest: {summary}")
 
 
 if __name__ == "__main__":
