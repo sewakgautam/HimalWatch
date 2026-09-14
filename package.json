@@ -1,0 +1,17 @@
+{
+  "name": "himalwatch",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@12.4.1",
+  "scripts": {
+    "dev": "pnpm --filter @himalwatch/web dev",
+    "pipeline": "pnpm --filter @himalwatch/pipeline run run",
+    "build": "pnpm --filter @himalwatch/schema build && pnpm --filter @himalwatch/web build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}

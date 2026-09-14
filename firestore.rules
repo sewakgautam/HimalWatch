@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// Firestore exists solely for QA annotations on low-confidence
+// extractions — see CLAUDE.md's non-negotiables. Every public read of
+// glacier/lake data is a static file; nothing here should ever back a
+// public data path, and no collection here is public-writable.
+//
+// Deny-all placeholder until the QA annotation flow is designed
+// (Session 6+, not reached yet) — a signed-in-reviewer read/write rule
+// gets added per-collection at that point, never a blanket `allow write`.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

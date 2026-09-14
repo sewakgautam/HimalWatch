@@ -1,0 +1,39 @@
+# Node
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+*.tsbuildinfo
+.turbo/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Generated data bundle — regeneratable, never hand-edited, never committed.
+# Keep the top-level folder trackable via .gitkeep so a fresh clone has
+# somewhere for the pipeline to write into.
+data/*
+!data/.gitkeep
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# Editors / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+*.swp

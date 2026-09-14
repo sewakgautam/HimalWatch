@@ -1,0 +1,11 @@
+{
+  "name": "@himalwatch/pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "run": "uv run himalwatch-pipeline",
+    "lint": "uv run ruff check src tests && uv run black --check src tests",
+    "typecheck": "uv run mypy src",
+    "test": "uv run pytest -v"
+  }
+}

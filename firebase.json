@@ -1,0 +1,18 @@
+{
+  "hosting": {
+    "public": "packages/web/out",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "packages/api",
+      "codebase": "default",
+      "runtime": "nodejs20",
+      "ignore": ["node_modules", ".git", "**/*.test.ts"]
+    }
+  ]
+}

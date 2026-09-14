@@ -1,0 +1,15 @@
+name: Weekly extraction pipeline
+
+# Placeholder — Session 1 scope only. The real pipeline (extract-lakes,
+# extract-glaciers, build-static, Firebase deploy) lands in a later
+# session; see docs/HIMALWATCH_SPEC.md §7.
+on:
+  schedule:
+    - cron: "0 3 * * 0" # Sundays 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "pipeline placeholder"

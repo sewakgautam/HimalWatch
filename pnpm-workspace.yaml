@@ -1,0 +1,11 @@
+packages:
+  - "packages/*"
+
+# Both are build tooling this workspace genuinely needs (esbuild backs
+# tsup/vitest; unrs-resolver backs eslint's import resolution) — pnpm
+# blocks postinstall scripts by default as a supply-chain guard, this is
+# an explicit allow, not a blanket bypass.
+allowBuilds:
+  esbuild: true
+  protobufjs: true
+  unrs-resolver: true
