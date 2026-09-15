@@ -1,15 +1,108 @@
 name: Weekly extraction pipeline
 
-# Placeholder — Session 1 scope only. The real pipeline (extract-lakes,
-# extract-glaciers, build-static, Firebase deploy) lands in a later
-# session; see docs/HIMALWATCH_SPEC.md §7.
+# Runs the full pipeline (reference data -> extraction -> static bundle)
+# and deploys the result to Firebase Hosting. See
+# docs/HIMALWATCH_SPEC.md §7.
+#
+# Scheduled Sundays 03:00 UTC (~08:45 Kathmandu Monday morning), plus
+# manual dispatch with basin/year overrides for testing or an ad-hoc
+# refresh.
+#
+# IMPORTANT — currently runs extract-lakes/extract-glaciers with
+# --dry-run: build_composite() (extract/lakes.py and extract/glaciers.py)
+# is a documented NotImplementedError stub — the real Sentinel-2 band
+# download against Copernicus Data Space needs a human to wire up and
+# verify against their own CDSE entitlement (see those modules'
+# docstrings). Without --dry-run this job would fail on every single
+# run. Once that's implemented, drop --dry-run below — until then, this
+# keeps the weekly job green and exercising the rest of the pipeline
+# (reference data freshness, the static bundle builder, the Firebase
+# deploy) against synthetic data instead of doing nothing at all.
 on:
   schedule:
     - cron: "0 3 * * 0" # Sundays 03:00 UTC
   workflow_dispatch:
+    inputs:
+      basin:
+        description: "Basin id to extract"
+        required: false
+        default: "koshi"
+        type: choice
+        options: [koshi, gandaki, karnali, mahakali]
+      year:
+        description: "Extraction year (blank = current year)"
+        required: false
+        type: string
 
 jobs:
-  placeholder:
+  pipeline:
     runs-on: ubuntu-latest
+    env:
+      COPERNICUS_USERNAME: ${{ secrets.COPERNICUS_USERNAME }}
+      COPERNICUS_PASSWORD: ${{ secrets.COPERNICUS_PASSWORD }}
     steps:
-      - run: echo "pipeline placeholder"
+      - uses: actions/checkout@v4
+
+      - name: Resolve basin/year inputs
+        id: vars
+        run: |
+          YEAR="${{ github.event.inputs.year }}"
+          if [ -z "$YEAR" ]; then
+            YEAR="$(date +%Y)"
+          fi
+          echo "basin=${{ github.event.inputs.basin || 'koshi' }}" >> "$GITHUB_OUTPUT"
+          echo "year=$YEAR" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python 3.11 (uv)
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node 20 + pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install tippecanoe
+        run: sudo apt-get update -y && sudo apt-get install -y tippecanoe
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Sync pipeline dependencies
+        working-directory: packages/pipeline
+        run: uv sync
+
+      - run: pnpm --filter @himalwatch/schema build
+
+      - name: Load reference data (idempotent — skips if <30 days old)
+        run: pnpm pipeline load
+
+      # See the NotImplementedError note at the top of this file re: --dry-run.
+      - name: Extract lakes
+        run: >
+          pnpm pipeline extract-lakes
+          --basin ${{ steps.vars.outputs.basin }}
+          --year ${{ steps.vars.outputs.year }}
+          --dry-run
+
+      - name: Extract glaciers
+        run: >
+          pnpm pipeline extract-glaciers
+          --basin ${{ steps.vars.outputs.basin }}
+          --year ${{ steps.vars.outputs.year }}
+          --dry-run
+
+      - name: Build static bundle
+        run: pnpm pipeline build-static
+
+      - name: Build web portal
+        run: pnpm --filter @himalwatch/web build
+
+      - name: Deploy to Firebase Hosting
+        run: npx firebase-tools@latest deploy --only hosting --token "$FIREBASE_TOKEN" --non-interactive
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

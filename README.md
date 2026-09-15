@@ -84,7 +84,25 @@ Full working conventions live in [`CLAUDE.md`](CLAUDE.md).
 
 ## Status
 
-Sessions 1–5 of the build (workspace bootstrap → reference data → lake
-extraction → glacier extraction + static bundle → web portal) are in this
-repo. The weekly cron wiring and first production deploy (prompt-book
-Session 6) have not landed yet.
+Sessions 1–6 of the build are in this repo: workspace bootstrap →
+reference data → lake extraction → glacier extraction + static bundle →
+web portal → weekly cron wiring (`.github/workflows/pipeline.yml`). Session
+6's own prompt text was cut off partway through when handed to Claude
+Code, so the workflow's later steps (build-static onward) are a reasonable
+completion, not a verbatim transcription — see that file's own comments.
+
+Before the cron job can actually run and deploy anything, this repo still
+needs:
+
+- A GitHub remote, pushed, with **Actions enabled**.
+- Repo secrets: `COPERNICUS_USERNAME`, `COPERNICUS_PASSWORD`,
+  `FIREBASE_TOKEN` (`firebase login:ci` generates the latter).
+- A real Firebase project id in `.firebaserc` (currently a placeholder —
+  `firebase use --add` from the repo root will fill it in correctly).
+- `build_composite()` in `extract/lakes.py` / `extract/glaciers.py` — still
+  a documented stub (see their docstrings). The workflow currently runs
+  with `--dry-run` for exactly this reason: without it, every scheduled
+  run would fail. Drop `--dry-run` once that's implemented.
+
+No production deploy has happened from this session — the workflow file
+exists but nothing has pushed to a live Firebase Hosting site yet.
