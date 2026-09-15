@@ -2,26 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "maplibre-gl/dist/maplibre-gl.css";
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #f5f5f0;
+  --foreground: #1a2e3b;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* MapLibre's own popup/control chrome inherits body font by default,
+   which looks off against the map — keep it on the system stack. */
+.maplibregl-popup-content {
+  font-family: Arial, Helvetica, sans-serif;
 }

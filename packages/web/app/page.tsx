@@ -1,101 +1,101 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import type { IndexEntry } from "@himalwatch/schema";
+import { Suspense, useMemo, useState } from "react";
+import { FilterPanel } from "../components/FilterPanel";
+import { Header } from "../components/Header";
+import { Legend } from "../components/Legend";
+import { MapView } from "../components/MapView";
+import { NepalOverview } from "../components/NepalOverview";
+import { SubjectDetailDrawer } from "../components/SubjectDetailDrawer";
+import { YearSlider } from "../components/YearSlider";
+import { distinctYears, useIndex } from "../lib/data";
+import { applyFilters, countActiveFilters } from "../lib/filters";
+import { useFilterState } from "../lib/useFilterState";
+
+// nuqs' useQueryStates reads useSearchParams() internally, which forces
+// this whole subtree to bail out of static prerendering unless it's
+// wrapped in Suspense — see
+// https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout.
+export default function HomePage() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center bg-offwhite text-navy">
+          Loading map…
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      }
+    >
+      <MapPageContent />
+    </Suspense>
+  );
+}
+
+function MapPageContent() {
+  const { entries, isLoading } = useIndex();
+  const { filters, setFilters } = useFilterState();
+  const [selected, setSelected] = useState<IndexEntry | null>(null);
+
+  const years = useMemo(() => distinctYears(entries), [entries]);
+
+  const filtered = useMemo(() => applyFilters(entries, filters), [entries, filters]);
+
+  const indexById = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+
+  // Only pass a restrictive id set to the map when a filter is actually
+  // active — otherwise every feature shows, and we skip building a
+  // multi-thousand-entry Set on every render for nothing.
+  const visibleIds = useMemo(() => {
+    if (countActiveFilters(filters) === 0) return null;
+    return new Set(filtered.map((e) => e.id));
+  }, [filters, filtered]);
+
+  return (
+    <div className="flex h-screen flex-col">
+      <Header />
+      <div className="relative flex-1">
+        <MapView visibleIds={visibleIds} onSelectFeature={setSelected} indexById={indexById} />
+
+        <div className="pointer-events-none absolute inset-0 flex">
+          <div className="pointer-events-auto m-3 flex flex-col gap-3">
+            <FilterPanel
+              allEntries={entries}
+              filteredCount={filtered.length}
+              filters={filters}
+              onChange={(patch) => setFilters(patch)}
+            />
+            <NepalOverview />
+          </div>
+
+          <div className="flex flex-1 flex-col justify-end">
+            <div className="pointer-events-auto mb-3 ml-3 self-start">
+              <YearSlider
+                years={years}
+                selected={filters.year}
+                onChange={(year) => setFilters({ year })}
+              />
+            </div>
+          </div>
+
+          <div className="pointer-events-auto m-3 self-start">
+            <Legend />
+          </div>
+        </div>
+
+        {selected && (
+          <div className="absolute inset-y-0 right-0">
+            <SubjectDetailDrawer entry={selected} onClose={() => setSelected(null)} />
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="absolute inset-x-0 top-1/2 flex justify-center">
+            <div className="rounded-full bg-white px-4 py-2 text-sm text-navy shadow-md">
+              Loading dataset…
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

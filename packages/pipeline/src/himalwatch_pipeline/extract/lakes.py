@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -196,7 +197,7 @@ def _elongation(geom) -> float:
 
 def filter_lakes(
     candidates: gpd.GeoDataFrame,
-    dem_elevation_by_point: callable[[Point], float],
+    dem_elevation_by_point: Callable[[Point], float],
     glaciers_baseline: gpd.GeoDataFrame,
     min_area_m2: float = MIN_AREA_M2,
     min_elevation_m: float = MIN_ELEVATION_M,

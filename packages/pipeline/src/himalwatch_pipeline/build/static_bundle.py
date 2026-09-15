@@ -92,7 +92,7 @@ def _json_safe(entry: dict) -> dict:
     missing values — normalize to plain JSON-serializable Python values
     (NaN/NaT -> None) rather than letting json.dumps choke on them.
     """
-    safe = {}
+    safe: dict = {}
     for k, v in entry.items():
         if isinstance(v, float) and v != v:  # NaN
             safe[k] = None
