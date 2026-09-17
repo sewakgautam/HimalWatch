@@ -99,10 +99,13 @@ Before the cron job can actually run and deploy anything, this repo still
 needs:
 
 - A GitHub remote, pushed, with **Actions enabled**.
-- Repo secrets: `COPERNICUS_USERNAME`, `COPERNICUS_PASSWORD`,
-  `FIREBASE_TOKEN` (`firebase login:ci` generates the latter).
-- A real Firebase project id in `.firebaserc` (currently a placeholder —
-  `firebase use --add` from the repo root will fill it in correctly).
+- Repo secrets: `COPERNICUS_USERNAME`, `COPERNICUS_PASSWORD`, and
+  `FIREBASE_SERVICE_ACCOUNT` — a Firebase service account JSON key, **not**
+  a CI token (`firebase login:ci` is deprecated and no longer works with
+  current `firebase-tools`). Generate one at Firebase Console → Project
+  Settings → **Service Accounts** → **Generate new private key**, then
+  paste the entire downloaded JSON file's contents as the secret value.
+- A real Firebase project id in `.firebaserc` (already done — `himalwatchnp`).
 - `build_composite()` in `extract/lakes.py` / `extract/glaciers.py` — still
   a documented stub (see their docstrings). The workflow currently runs
   with `--dry-run` for exactly this reason: without it, every scheduled
