@@ -164,17 +164,57 @@ def _git_commit_sha(repo_root: Path) -> str:
         return "unknown"
 
 
+def _restored_years_not_in(
+    data_dir: Path, subject_type: str, already_covered: set[int]
+) -> dict[int, gpd.GeoDataFrame]:
+    """Years with a snapshots/{year}.geojson already on disk (restored
+    from the live site by restore_history.py, or left over from a prior
+    step in this same run) that aren't already covered by a fresh raw
+    per-basin extraction this run. Treated as closed history — see
+    restore_history.py's docstring for exactly what that means.
+    """
+    snapshots_dir = data_dir / subject_type / "snapshots"
+    if not snapshots_dir.exists():
+        return {}
+    restored: dict[int, gpd.GeoDataFrame] = {}
+    for path in sorted(snapshots_dir.glob("*.geojson")):
+        try:
+            year = int(path.stem)
+        except ValueError:
+            continue
+        if year in already_covered:
+            continue
+        gdf = gpd.read_file(path)
+        if not gdf.empty:
+            restored[year] = gdf
+    return restored
+
+
 def build_static_bundle(data_dir: Path) -> dict:
     """Runs the full build: per-basin/per-year extraction files ->
     latest/, snapshots/, index.json, manifest.json, tiles/, downloads/.
     Returns the manifest dict (also written to manifest.json).
+
+    Folds in any already-restored `snapshots/{year}.geojson` for years
+    not covered by this run's fresh extraction (see restore_history.py) —
+    without this, every run would only ever know about the current year,
+    even though the pipeline is meant to accumulate history over time.
     """
     by_type_by_year: dict[str, dict[int, gpd.GeoDataFrame]] = {}
     for subject_type in SUBJECT_TYPES:
         files = _discover_extraction_files(data_dir, subject_type)
-        by_type_by_year[subject_type] = _load_by_year(files)
+        fresh_by_year = _load_by_year(files)
+        restored_by_year = _restored_years_not_in(data_dir, subject_type, set(fresh_by_year))
+        if restored_by_year:
+            logger.info(
+                "%s: folding in %d restored historical year(s): %s",
+                subject_type,
+                len(restored_by_year),
+                sorted(restored_by_year),
+            )
+        by_type_by_year[subject_type] = {**restored_by_year, **fresh_by_year}
         logger.info(
-            "%s: found %d extraction file(s) across %d year(s)",
+            "%s: found %d extraction file(s) across %d year(s) total (incl. restored)",
             subject_type,
             len(files),
             len(by_type_by_year[subject_type]),

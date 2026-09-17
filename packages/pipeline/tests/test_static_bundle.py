@@ -143,3 +143,50 @@ class TestBuildStaticBundle:
         assert len(nepal) == 5
         assert manifest["counts_by_basin"]["koshi"]["glaciers"] == 2
         assert manifest["counts_by_basin"]["gandaki"]["glaciers"] == 3
+
+
+class TestRestoredHistoryFoldIn:
+    """Regression coverage for "why do I only ever see the current year" —
+    a prior year's snapshot file, as restore_history.py would have placed
+    it before this run, must be folded into subjects_by_year and get its
+    own downloads regenerated, without being mistaken for the current
+    (fresh) year or leaking into latest/index.json.
+    """
+
+    def test_a_restored_prior_year_is_counted_but_never_becomes_latest(self, tmp_path: Path):
+        data_dir = tmp_path / "data"
+        # Only 2025 is a *fresh* extraction this run.
+        _write_fixture(data_dir / "glaciers" / "koshi-2025.geojson", "glaciers", "koshi", 2025, 3)
+        # 2024 exists only as an already-merged snapshot — exactly what
+        # restore_history.py would have placed there before this run,
+        # with no matching raw per-basin file at all.
+        _write_fixture(
+            data_dir / "glaciers" / "snapshots" / "2024.geojson", "glaciers", "koshi", 2024, 2
+        )
+
+        manifest = build_static_bundle(data_dir)
+
+        assert manifest["subjects_by_year"] == {"2024": 2, "2025": 3}
+        # latest/ and index.json reflect only the fresh 2025 extraction.
+        nepal = gpd.read_file(data_dir / "glaciers" / "latest" / "nepal.geojson")
+        assert len(nepal) == 3
+        index_entries = json.loads((data_dir / "index.json").read_text())
+        assert all(e["year"] == 2025 for e in index_entries)
+        # The restored year still gets its own download files.
+        assert (data_dir / "downloads" / "glaciers-nepal-2024.geojson").exists()
+        assert (data_dir / "downloads" / "glaciers-nepal-2024.csv").exists()
+
+    def test_a_year_with_both_a_restored_snapshot_and_a_fresh_extraction_uses_the_fresh_one(
+        self, tmp_path: Path
+    ):
+        data_dir = tmp_path / "data"
+        _write_fixture(data_dir / "glaciers" / "koshi-2025.geojson", "glaciers", "koshi", 2025, 3)
+        # A stale leftover snapshot for the *same* year 2025 — e.g. from a
+        # re-run — must not be double-counted alongside the fresh one.
+        _write_fixture(
+            data_dir / "glaciers" / "snapshots" / "2025.geojson", "glaciers", "koshi", 2025, 99
+        )
+
+        manifest = build_static_bundle(data_dir)
+
+        assert manifest["subjects_by_year"]["2025"] == 3

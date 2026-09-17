@@ -101,6 +101,15 @@ jobs:
       # ERR_PNPM_NO_PIPELINES if none is declared there, rather than
       # falling through to the "pipeline" script in package.json. Hit
       # this same thing locally — same fix.
+      #
+      # Must run before everything else pipeline-related: this is a bare
+      # checkout, so without pulling prior years back from the live site
+      # first, every run would only ever know about the year it extracts
+      # *this* time — history wouldn't accumulate, it'd just get
+      # overwritten. See build/restore_history.py's docstring.
+      - name: Restore prior years' data from the live site
+        run: pnpm run pipeline restore-history
+
       - name: Load reference data (idempotent — skips if <30 days old)
         run: pnpm run pipeline load
 

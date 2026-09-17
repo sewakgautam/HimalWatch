@@ -25,7 +25,7 @@ const notoDevanagari = Noto_Sans_Devanagari({
 export const metadata: Metadata = {
   title: "HimalWatch — हिमताल र हिमनदी अनुगमन",
   description:
-    "Weekly Sentinel-2 monitoring of Nepal's glaciers and glacial lakes — complementary to the FP272 official inventory.",
+    "Weekly Sentinel-2 monitoring of Nepal's glaciers and glacial lakes — complementary to the official government inventory.",
 };
 
 export default function RootLayout({

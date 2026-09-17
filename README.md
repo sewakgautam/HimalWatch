@@ -9,15 +9,13 @@ No live database, no server cost, no paid services.
 
 ## Why this exists
 
-[FP272](https://www.greenclimate.fund/sites/default/files/document/funding-proposal-fp272.pdf)
-(UNDP/GCF, $50M, 2025–2032) is funding the official glacier and glacial-lake
-inventory for Nepal, run with DHM. That inventory is authoritative but
-refreshes on a multi-year cycle. HimalWatch is a **complementary**
-observational layer: lightweight weekly Sentinel-2 monitoring that fills
-the gap between official updates. It is not an alternative to DHM/ICIMOD
-data, does not redistribute ICIMOD data without permission, and never
-publishes a GLOF risk score without a documented, human-reviewed
-methodology.
+Nepal's official glacier and glacial-lake inventory, run by DHM, is
+authoritative but refreshes on a multi-year cycle. HimalWatch is a
+**complementary** observational layer: lightweight weekly Sentinel-2
+monitoring that fills the gap between official updates. It is not an
+alternative to DHM/ICIMOD data, does not redistribute ICIMOD data without
+permission, and never publishes a GLOF risk score without a documented,
+human-reviewed methodology.
 
 ## Architecture
 

@@ -75,9 +75,9 @@ export default function MethodologyPage() {
             to &quot;unknown&quot;.
           </li>
           <li>
-            <strong>Not a replacement for FP272.</strong> The official, DHM-run 5-yearly inventory
-            under FP272 is the authoritative source. This pipeline exists to fill the gap between
-            those updates with lightweight weekly monitoring — see the{" "}
+            <strong>Not a replacement for the official inventory.</strong> DHM&apos;s own 5-yearly
+            glacier/lake inventory is the authoritative source. This pipeline exists to fill the
+            gap between those updates with lightweight weekly monitoring — see the{" "}
             <a href="/about">about page</a>.
           </li>
         </ul>

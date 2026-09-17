@@ -9,6 +9,7 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
+from .build.restore_history import restore_history
 from .build.static_bundle import build_static_bundle
 from .extract.glaciers import extract_glaciers
 from .extract.lakes import extract_lakes
@@ -33,6 +34,28 @@ def _configure_logging(verbose: bool) -> None:
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+
+
+@app.command(name="restore-history")
+def restore_history_command(
+    site_url: str = typer.Option(
+        "https://himalwatchnp.web.app",
+        "--site-url",
+        help="Live site to restore prior years' snapshots from before this run's fresh extraction.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Downloads prior years' already-merged snapshot files from the live
+    site into data/{glaciers,lakes}/snapshots/ — run this before `load`/
+    `extract-*`/`build-static` on a fresh checkout, or every year's data
+    silently vanishes on the next run. See build/restore_history.py.
+    """
+    _configure_logging(verbose)
+    restored = restore_history(_DATA_DIR, site_url)
+    if not restored:
+        typer.echo("Nothing restored (first-ever run, or site unreachable — see log)")
+    else:
+        typer.echo(f"Restored {len(restored)} file(s): {sorted(restored)}")
 
 
 @app.command()

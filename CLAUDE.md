@@ -3,7 +3,8 @@
 ## What this is
 Nepal High-Altitude Glacier & Glacial Lake Monitoring and Inventory System.
 Weekly Sentinel-2 pipeline → static GeoJSON + PMTiles → Firebase-hosted portal.
-Positioned as complementary observational monitoring to FP272 (UNDP/GCF/DHM $50M project).
+Positioned as complementary observational monitoring alongside the official
+government glacier/lake inventory (run by DHM), not a replacement for it.
 Public tool for tracking Nepal's ~3,800 glaciers and ~2,070 glacial lakes.
 
 ## Non-negotiables
@@ -30,7 +31,7 @@ Public tool for tracking Nepal's ~3,800 glaciers and ~2,070 glacial lakes.
 - `packages/schema/` — shared TS types + Zod schemas
 - `packages/api/` — Firebase Cloud Functions (QA endpoints only; public reads are static)
 - `.github/workflows/` — weekly cron pipeline
-- `docs/` — spec, methodology, FP272 alignment brief
+- `docs/` — spec, methodology
 - `data/` — generated static bundle (git-ignored except structure)
 
 ## Data model
@@ -65,11 +66,10 @@ URL-encoded state so filter combinations are shareable.
 ## Reference documents
 - `docs/HIMALWATCH_SPEC.md` — full technical spec (data model, methodology, phases)
 - `docs/himalwatch-prototype.html` — v0 prototype with live GLIMS WMS integration
-- FP272 funding proposal: https://www.greenclimate.fund/sites/default/files/document/funding-proposal-fp272.pdf
 - GLIMS WMS: https://www.glims.org/geoserver/ows
 
-## The FP272 context
-UNDP/GCF FP272 ($50M, 2025-2032) is doing the official inventory work with DHM.
-Their inventory refreshes every 5 years. HimalWatch fills the between-updates gap
-with weekly Sentinel-2 monitoring. This is a complementary tool, not a competitor.
+## Positioning
+The official government glacier/lake inventory (run by DHM) refreshes on a
+multi-year cycle. HimalWatch fills the between-updates gap with weekly
+Sentinel-2 monitoring. This is a complementary tool, not a competitor.
 Never frame HimalWatch as an alternative to DHM/ICIMOD data.

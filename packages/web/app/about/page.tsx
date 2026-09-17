@@ -16,18 +16,11 @@ export default function AboutPage() {
           running cost.
         </p>
 
-        <h2>Relationship to FP272</h2>
+        <h2>Relationship to the official inventory</h2>
         <p>
-          <a
-            href="https://www.greenclimate.fund/sites/default/files/document/funding-proposal-fp272.pdf"
-            target="_blank"
-            rel="noreferrer"
-          >
-            FP272
-          </a>{" "}
-          is a $50M UNDP/Green Climate Fund project (2025–2032) funding the official glacier and
-          glacial-lake inventory for Nepal, run together with the Department of Hydrology and
-          Meteorology (DHM). That inventory is authoritative and refreshes on a multi-year cycle.
+          Nepal&apos;s official glacier and glacial-lake inventory is run by the Department of
+          Hydrology and Meteorology (DHM). That inventory is authoritative and refreshes on a
+          multi-year cycle.
         </p>
         <p>
           HimalWatch is <strong>complementary</strong>, not competing: it fills the gap between

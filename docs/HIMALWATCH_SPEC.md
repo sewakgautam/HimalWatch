@@ -21,8 +21,8 @@ composites, extracts glacier/lake outlines, and rebuilds a static bundle
 (GeoJSON + PMTiles) that Firebase Hosting serves directly — no live
 database, no server-rendered pages for public data.
 
-HimalWatch is **complementary** to FP272 (UNDP/GCF/DHM, $50M, 2025–2032),
-which produces the official 5-yearly glacier/lake inventory. HimalWatch
+HimalWatch is **complementary** to the official government glacier/lake
+inventory (run by DHM), which refreshes on a 5-yearly cycle. HimalWatch
 fills the gap *between* those updates with lightweight weekly monitoring.
 It is never framed as a replacement for DHM/ICIMOD data, and never
 redistributes ICIMOD data without written permission.
