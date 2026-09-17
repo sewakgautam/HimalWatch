@@ -29,6 +29,8 @@ import numpy as np
 import rasterio
 import requests
 from rasterio.features import shapes as rasterio_shapes
+from rasterio.transform import from_bounds as transform_from_bounds
+from rasterio.warp import Resampling, reproject, transform_bounds
 from shapely.geometry import Point, Polygon, shape
 from shapely.ops import unary_union
 from skimage.filters import threshold_otsu
@@ -48,8 +50,30 @@ MAX_ELONGATION = 40.0
 MATCH_DISTANCE_M = 200.0
 
 # UTM 45N — see CLAUDE.md: areas/distances are computed in this CRS, never
-# in the geographic (degree-based) CRS the source data arrives in.
+# in the geographic (degree-based) CRS the source data arrives in. Also
+# used as build_composite's fixed reprojection target (see there) — a
+# scene near a UTM-zone boundary can arrive in 44N or 46N, and stacking
+# rasters from different native CRSs without a common target grid would
+# silently misalign pixels.
 _METRIC_CRS = "EPSG:32645"
+_COMPOSITE_RESOLUTION_M = 10.0  # matches Sentinel-2's Green (B03) native resolution
+
+# STAC catalogs vary in how they name Sentinel-2 L2A assets (common-name
+# extension vs. raw band id) — try each in order rather than hard-coding
+# one, since this hasn't been verified against a live CDSE catalog
+# response (see build_composite's docstring).
+_ASSET_KEY_CANDIDATES: dict[str, tuple[str, ...]] = {
+    "green": ("green", "B03", "b03"),
+    "swir": ("swir16", "B11", "b11"),  # SWIR1 (1.6um) — the MNDWI/NDSI band, not swir22/B12
+    "scl": ("scl", "SCL"),
+}
+
+# Sentinel-2 L2A Scene Classification values to exclude before compositing:
+# 0 no data, 1 saturated/defective, 3 cloud shadow, 8/9 cloud (medium/high
+# probability), 10 thin cirrus. Deliberately does NOT exclude 11 (snow/
+# ice) — glacier extraction (extract/glaciers.py) needs exactly those
+# pixels, so masking them here would silently break that caller.
+_SCL_EXCLUDE = frozenset({0, 1, 3, 8, 9, 10})
 
 
 @dataclass
@@ -93,6 +117,66 @@ def _get_cdse_token() -> str:
     return resp.json()["access_token"]
 
 
+def _vsicurl(href: str) -> str:
+    return href if href.startswith("/vsicurl/") else f"/vsicurl/{href}"
+
+
+def _asset_href(item, kind: str):
+    for key in _ASSET_KEY_CANDIDATES[kind]:
+        if key in item.assets:
+            return item.assets[key].href
+    return None
+
+
+def _target_grid(
+    basin_bounds_4326: tuple[float, float, float, float],
+) -> tuple[rasterio.Affine, tuple[int, int]]:
+    """A fixed EPSG:32645 pixel grid covering the basin's bounding box, at
+    _COMPOSITE_RESOLUTION_M — every scene's bands get reprojected onto
+    this exact grid (not just windowed-read in their own native CRS), so
+    stacking scenes that happen to fall in different UTM zones still
+    lines up pixel-for-pixel.
+    """
+    left, bottom, right, top = transform_bounds("EPSG:4326", _METRIC_CRS, *basin_bounds_4326)
+    width = max(1, round((right - left) / _COMPOSITE_RESOLUTION_M))
+    height = max(1, round((top - bottom) / _COMPOSITE_RESOLUTION_M))
+    transform = transform_from_bounds(left, bottom, right, top, width, height)
+    return transform, (height, width)
+
+
+def _read_reprojected(
+    href: str,
+    token: str,
+    dst_transform: rasterio.Affine,
+    dst_shape: tuple[int, int],
+    resampling: Resampling,
+) -> np.ndarray:
+    """Opens a remote band (JP2/COG) over HTTPS via GDAL's /vsicurl/ with
+    the CDSE bearer token as an HTTP header, and reprojects it directly
+    onto the fixed target grid — no separate "read the whole file" step,
+    GDAL only fetches the byte ranges the reprojection actually touches.
+    """
+    dst = np.full(dst_shape, np.nan, dtype=np.float32)
+    with rasterio.Env(
+        GDAL_HTTP_HEADERS=f"Authorization: Bearer {token}",
+        GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR",
+        CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".jp2,.tif,.tiff",
+    ):
+        with rasterio.open(_vsicurl(href)) as src:
+            reproject(
+                source=rasterio.band(src, 1),
+                destination=dst,
+                src_transform=src.transform,
+                src_crs=src.crs,
+                dst_transform=dst_transform,
+                dst_crs=_METRIC_CRS,
+                resampling=resampling,
+                src_nodata=src.nodata,
+                dst_nodata=np.nan,
+            )
+    return dst
+
+
 def build_composite(
     basin_geom: dict,
     year: int,
@@ -104,13 +188,24 @@ def build_composite(
     Lake extraction uses the post-monsoon window (Oct 1 - Nov 30): lowest
     seasonal cloud cover, lake levels stabilized after monsoon inflow —
     see spec §5.1. Cloud masking uses the Scene Classification (SCL) band
-    to drop cloud/shadow/snow-ambiguous pixels before compositing.
+    to drop cloud/shadow/nodata pixels before compositing — but not
+    snow/ice (11), since extract/glaciers.py's NDSI needs exactly those
+    pixels and shares this same function.
 
-    This performs real network IO (STAC search + CDSE OAuth2 + band
-    download) and is not exercised by the test suite or by
-    `extract-lakes --dry-run` — both cover the pure functions below
-    instead. A human running this for real needs COPERNICUS_USERNAME/
-    COPERNICUS_PASSWORD set (see .env.example).
+    UNVERIFIED against a live CDSE connection — I (the agent that wrote
+    this) don't have Copernicus credentials and couldn't test it
+    end-to-end. What's solid: the STAC search, the OAuth2 token exchange
+    (both were exercised as far as auth + "no scenes found" in earlier
+    manual testing), and the reprojection/compositing math, which doesn't
+    depend on CDSE specifics. What's genuinely uncertain: the exact asset
+    key names CDSE's STAC catalog uses (see _ASSET_KEY_CANDIDATES) and
+    whether asset hrefs are plain HTTPS (works with /vsicurl/ + a bearer
+    header, as implemented) or S3 paths (would need different auth
+    entirely — S3 access keys, not the OAuth2 token). If this raises
+    KeyError from _asset_href or a GDAL "unable to open" error, run
+    `catalog.search(...).items()` interactively and inspect one
+    `item.assets` dict — that tells you immediately which of the two
+    is wrong and what the real keys are.
     """
     from pystac_client import Client  # local import: only needed on this path
 
@@ -133,15 +228,72 @@ def build_composite(
         )
     logger.info("Found %d candidate scenes for %s", len(items), date_range)
 
-    # A real implementation windowed-reads the Green (B03) and SWIR (B11)
-    # bands plus SCL for every item, cloud-masks via SCL, and takes a
-    # per-pixel median across the stack. Left as the integration point a
-    # human fills in against their own CDSE download entitlement — see
-    # this module's docstring for why that's not exercised here.
-    raise NotImplementedError(
-        "Band download + median compositing needs to be wired up against "
-        "a real CDSE download entitlement — see build_composite's docstring. "
-        "Use `--dry-run` to exercise everything downstream of this."
+    basin_bounds = shape(basin_geom).bounds
+    dst_transform, dst_shape = _target_grid(basin_bounds)
+
+    green_stack: list[np.ndarray] = []
+    swir_stack: list[np.ndarray] = []
+    for item in items:
+        green_href = _asset_href(item, "green")
+        swir_href = _asset_href(item, "swir")
+        scl_href = _asset_href(item, "scl")
+        if not (green_href and swir_href and scl_href):
+            logger.warning(
+                "Skipping scene %s — missing a required band asset (have: %s)",
+                item.id,
+                sorted(item.assets.keys()),
+            )
+            continue
+        try:
+            green = _read_reprojected(
+                green_href, token, dst_transform, dst_shape, Resampling.bilinear
+            )
+            swir = _read_reprojected(
+                swir_href, token, dst_transform, dst_shape, Resampling.bilinear
+            )
+            scl = _read_reprojected(scl_href, token, dst_transform, dst_shape, Resampling.nearest)
+        except Exception:
+            logger.exception("Skipping scene %s — failed to read one or more bands", item.id)
+            continue
+
+        invalid = np.isin(np.round(scl), list(_SCL_EXCLUDE))
+        green_stack.append(np.where(invalid, np.nan, green))
+        swir_stack.append(np.where(invalid, np.nan, swir))
+
+    if not green_stack:
+        raise RuntimeError(
+            f"All {len(items)} candidate scene(s) failed to read or had no usable bands — "
+            "see the warnings/exceptions logged above for why"
+        )
+
+    green_arr = np.stack(green_stack)
+    swir_arr = np.stack(swir_stack)
+
+    with np.errstate(invalid="ignore"):
+        green_median = np.nanmedian(green_arr, axis=0)
+        swir_median = np.nanmedian(swir_arr, axis=0)
+
+    # Fraction of AOI pixels with no valid (non-cloud/shadow/nodata)
+    # observation across the *entire* stack — this is what actually
+    # drives confidence downstream (spec §5.4), not the input scenes' own
+    # whole-tile cloud_cover metadata, which says nothing about whether
+    # this specific basin's AOI within the tile was clear.
+    fully_missing = np.all(np.isnan(green_arr), axis=0)
+    cloud_pct = float(fully_missing.mean() * 100)
+    logger.info(
+        "Composited %d/%d usable scene(s), %.1f%% of the AOI has no valid observation",
+        len(green_stack),
+        len(items),
+        cloud_pct,
+    )
+
+    return Composite(
+        green=green_median,
+        swir=swir_median,
+        transform=dst_transform,
+        crs=_METRIC_CRS,
+        cloud_pct=cloud_pct,
+        year=year,
     )
 
 

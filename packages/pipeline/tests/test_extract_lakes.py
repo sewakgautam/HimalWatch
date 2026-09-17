@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import geopandas as gpd
 import numpy as np
+import pytest
 from shapely.geometry import Point, Polygon
 
 from himalwatch_pipeline.extract.lakes import (
+    _asset_href,
+    _target_grid,
     compute_mndwi,
     filter_lakes,
     match_to_baseline,
@@ -209,3 +212,59 @@ class TestMatchToBaseline:
         by_label = dict(zip(result["label"], result["id"], strict=True))
         assert by_label["closer"] == "lake:a"
         assert by_label["farther"].startswith("lake:gen:")
+
+
+class _FakeAsset:
+    def __init__(self, href: str):
+        self.href = href
+
+
+class TestAssetHref:
+    """_asset_href tries several known STAC asset-naming conventions in
+    order (see _ASSET_KEY_CANDIDATES) since this hasn't been verified
+    against a live CDSE catalog response — these lock down the fallback
+    order itself, independent of which naming CDSE turns out to use.
+    """
+
+    def test_finds_common_name_key_first(self):
+        item = type(
+            "Item", (), {"assets": {"green": _FakeAsset("g.tif"), "B03": _FakeAsset("b03.tif")}}
+        )()
+        assert _asset_href(item, "green") == "g.tif"
+
+    def test_falls_back_to_raw_band_id(self):
+        item = type("Item", (), {"assets": {"B03": _FakeAsset("b03.tif")}})()
+        assert _asset_href(item, "green") == "b03.tif"
+
+    def test_returns_none_rather_than_raising_when_nothing_matches(self):
+        item = type("Item", (), {"assets": {"unrelated": _FakeAsset("x.tif")}})()
+        assert _asset_href(item, "green") is None
+
+
+class TestTargetGrid:
+    """A basin bbox near Everest (comfortably inside UTM zone 45N) ->
+    _target_grid should produce a 10m-resolution EPSG:32645 grid whose
+    extent covers that bbox.
+    """
+
+    def test_pixel_size_matches_composite_resolution(self):
+        transform, shape_ = _target_grid((86.8, 27.9, 86.9, 28.0))
+        # Not exact: transform_from_bounds distributes whatever fraction
+        # of a pixel the bbox doesn't evenly divide into across the
+        # width/height, so pixel size is only approximately 10m — that's
+        # correct, not a bug. 1% tolerance is generous enough to catch a
+        # real regression (e.g. someone changing _COMPOSITE_RESOLUTION_M
+        # or the rounding) while tolerating that snapping.
+        assert transform.a == pytest.approx(10.0, rel=0.01)
+        assert transform.e == pytest.approx(-10.0, rel=0.01)
+        assert shape_[0] > 0 and shape_[1] > 0
+
+    def test_larger_bbox_produces_a_larger_grid(self):
+        _, small_shape = _target_grid((86.80, 27.90, 86.81, 27.91))
+        _, big_shape = _target_grid((86.5, 27.5, 87.0, 28.0))
+        assert big_shape[0] > small_shape[0]
+        assert big_shape[1] > small_shape[1]
+
+    def test_degenerate_bbox_still_returns_at_least_one_pixel(self):
+        _, shape_ = _target_grid((86.8, 27.9, 86.8, 27.9))
+        assert shape_ == (1, 1)
