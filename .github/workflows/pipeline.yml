@@ -63,10 +63,14 @@ jobs:
           echo "basins=$BASINS" >> "$GITHUB_OUTPUT"
           echo "year=$YEAR" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Python 3.11 (uv)
+      # No `python-version:` input — astral-sh/setup-uv only installs the
+      # uv binary itself; it has no such input at all (GitHub Actions
+      # warned "Unexpected input(s) 'python-version'" when this was set).
+      # The actual Python version comes from packages/pipeline's own
+      # .python-version / pyproject.toml `requires-python`, which `uv
+      # sync` reads and downloads a matching interpreter for automatically.
+      - name: Set up uv
         uses: astral-sh/setup-uv@v3
-        with:
-          python-version: "3.11"
 
       # No `version:` input here — pnpm/action-setup reads it from
       # package.json's "packageManager" field (pnpm@12.4.1). Setting it in
