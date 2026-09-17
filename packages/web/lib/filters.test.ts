@@ -120,6 +120,17 @@ describe("applyFilters", () => {
     const result = applyFilters(entries, filters);
     expect(result).toHaveLength(1);
   });
+
+  it("never excludes entries by filters.year — index.json only ever holds the latest year, so that would zero out the whole list for any other year", () => {
+    // Regression: dragging the year slider away from "latest" used to
+    // blank the entire map, because this used to filter entries by
+    // `entry.year === filters.year` against an index that only ever
+    // contains one year's worth of entries. `filters.year` now drives the
+    // map's tile-layer filter (see MapView's `year` prop) instead.
+    const entries = [glacier({ year: 2025 }), lake({ year: 2025 })];
+    const result = applyFilters(entries, { ...EMPTY_FILTERS, year: 2024 });
+    expect(result).toHaveLength(2);
+  });
 });
 
 describe("countActiveFilters", () => {
@@ -130,5 +141,10 @@ describe("countActiveFilters", () => {
   it("counts each non-empty field once, arrays included", () => {
     const filters: FilterState = { ...EMPTY_FILTERS, basin: ["koshi"], pdglOnly: true, q: "tsho" };
     expect(countActiveFilters(filters)).toBe(3);
+  });
+
+  it("never counts filters.year — it drives the map layer, not this filtered list", () => {
+    const filters: FilterState = { ...EMPTY_FILTERS, year: 2024 };
+    expect(countActiveFilters(filters)).toBe(0);
   });
 });

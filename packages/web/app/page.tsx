@@ -9,7 +9,7 @@ import { MapView } from "../components/MapView";
 import { NepalOverview } from "../components/NepalOverview";
 import { SubjectDetailDrawer } from "../components/SubjectDetailDrawer";
 import { YearSlider } from "../components/YearSlider";
-import { distinctYears, useIndex } from "../lib/data";
+import { useIndex, useManifest } from "../lib/data";
 import { applyFilters, countActiveFilters } from "../lib/filters";
 import { useFilterState } from "../lib/useFilterState";
 
@@ -33,10 +33,31 @@ export default function HomePage() {
 
 function MapPageContent() {
   const { entries, isLoading } = useIndex();
+  const { manifest } = useManifest();
   const { filters, setFilters } = useFilterState();
   const [selected, setSelected] = useState<IndexEntry | null>(null);
 
-  const years = useMemo(() => distinctYears(entries), [entries]);
+  // From manifest.subjects_by_year, not index.json — index.json only ever
+  // holds the latest year's subjects (spec §2.5), so deriving the slider's
+  // range from it could never show more than one year no matter how much
+  // history the pipeline had actually accumulated. manifest.json is the
+  // one file that tracks every year on record — see
+  // restore_history.py/static_bundle.py on the pipeline side.
+  const years = useMemo(
+    () =>
+      manifest
+        ? Object.keys(manifest.subjects_by_year)
+            .map(Number)
+            .sort((a, b) => b - a)
+        : [],
+    [manifest]
+  );
+  const latestYear = years[0] ?? new Date().getFullYear();
+  // filters.year is shareable URL state and may be null ("show latest"),
+  // but the map layer always needs one concrete year to filter its tiles
+  // by — resolve that here rather than pushing the null-handling into
+  // MapView.
+  const mapYear = filters.year ?? latestYear;
 
   const filtered = useMemo(() => applyFilters(entries, filters), [entries, filters]);
 
@@ -54,7 +75,12 @@ function MapPageContent() {
     <div className="flex h-screen flex-col">
       <Header />
       <div className="relative flex-1">
-        <MapView visibleIds={visibleIds} onSelectFeature={setSelected} indexById={indexById} />
+        <MapView
+          visibleIds={visibleIds}
+          onSelectFeature={setSelected}
+          indexById={indexById}
+          year={mapYear}
+        />
 
         <div className="pointer-events-none absolute inset-0 flex">
           <div className="pointer-events-auto m-3 flex flex-col gap-3">

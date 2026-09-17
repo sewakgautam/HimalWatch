@@ -21,11 +21,17 @@ interface MapViewProps {
   visibleIds: Set<string> | null; // null = show everything (no filter active)
   onSelectFeature: (entry: IndexEntry | null) => void;
   indexById: Map<string, IndexEntry>;
+  // The PMTiles source carries every extraction year (each feature tagged
+  // with its own `year` property) specifically so this can filter down to
+  // one year client-side — already-resolved to a concrete year by the
+  // caller (page.tsx), never null, since "latest" is just "the newest
+  // year" as far as the tile source is concerned.
+  year: number;
 }
 
 let protocolRegistered = false;
 
-export function MapView({ visibleIds, onSelectFeature, indexById }: MapViewProps) {
+export function MapView({ visibleIds, onSelectFeature, indexById, year }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
 
@@ -156,16 +162,24 @@ export function MapView({ visibleIds, onSelectFeature, indexById }: MapViewProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Applies the current filter as a visibility filter on both layers —
-  // `null` means "no filter active", so every feature shows.
+  // Applies both the id-based attribute filter (visibleIds — null means
+  // "no filter active", so every id passes) AND the year filter as one
+  // combined MapLibre filter. The year half is never optional — every
+  // feature in the tile source carries a `year` (see build_static_bundle's
+  // all-years.geojson), so without this every year's geometry would
+  // render superimposed on every other year's, not just the latest.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const apply = () => {
-      const filterExpr =
+      const yearFilter: FilterSpecification = ["==", ["get", "year"], year] as unknown as FilterSpecification;
+      const idFilter: FilterSpecification | null =
         visibleIds === null
           ? null
           : (["in", ["get", "id"], ["literal", Array.from(visibleIds)]] as unknown as FilterSpecification);
+      const filterExpr: FilterSpecification = (
+        idFilter === null ? yearFilter : ["all", yearFilter, idFilter]
+      ) as unknown as FilterSpecification;
       for (const layerId of ["glaciers-fill", "glaciers-outline", "lakes-fill", "lakes-outline"]) {
         if (map.getLayer(layerId)) {
           map.setFilter(layerId, filterExpr);
@@ -174,7 +188,7 @@ export function MapView({ visibleIds, onSelectFeature, indexById }: MapViewProps
     };
     if (map.isStyleLoaded()) apply();
     else map.once("style.load", apply);
-  }, [visibleIds]);
+  }, [visibleIds, year]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

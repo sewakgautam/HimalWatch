@@ -249,9 +249,29 @@ def build_static_bundle(data_dir: Path) -> dict:
 
         index_entries.extend(_to_index_entries(latest_gdf, subject_type))
 
+        # PMTiles are built from *every* year combined, not just latest_gdf
+        # — each feature already carries its own `year` property (part of
+        # the Glacier/Lake schema), so the web app's year slider can
+        # MapLibre-filter the same tile source down to one year client-side
+        # instead of needing a different tile source per year. Building
+        # from latest_gdf alone was the reason the slider previously had
+        # no effect: there was only ever one year's geometry in the tiles
+        # regardless of which year was selected.
+        all_years_gdf = gpd.GeoDataFrame(
+            pd.concat(list(by_year.values()), ignore_index=True), crs=latest_gdf.crs
+        )
+        # Under latest/, not directly in data_dir/{subject_type}/ — that
+        # top-level directory is exactly what _discover_extraction_files
+        # globs non-recursively for raw "{basin}-{year}.geojson" inputs on
+        # the *next* run; a re-run would otherwise try to parse this
+        # file's own name as one and crash (caught by
+        # test_idempotent_rerun_produces_the_same_counts).
+        all_years_path = data_dir / subject_type / "latest" / "all-years.geojson"
+        _write_geojson(all_years_gdf, all_years_path)
+
         singular = subject_type[:-1]
         _build_pmtiles(
-            data_dir / subject_type / "latest" / "nepal.geojson",
+            all_years_path,
             data_dir / "tiles" / f"nepal-{subject_type}.pmtiles",
             layer_name=singular,
         )

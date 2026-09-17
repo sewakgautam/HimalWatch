@@ -77,7 +77,14 @@ export function applyFilters(entries: IndexEntry[], filters: FilterState): Index
     if (filters.basin.length && !filters.basin.includes(entry.basin)) return false;
     if (filters.district.length && !filters.district.includes(entry.district)) return false;
     if (filters.confidence.length && !filters.confidence.includes(entry.confidence)) return false;
-    if (filters.year !== null && entry.year !== filters.year) return false;
+    // No `entry.year` check here — index.json (spec §2.5) only ever holds
+    // the latest year's subjects, one entry per id, so matching against
+    // `filters.year` for anything but the latest year would always
+    // return zero results. `filters.year` instead drives which year the
+    // *map layer* shows (see MapView's `year` prop, applied as a filter
+    // directly on the PMTiles' own per-feature `year` property, which —
+    // unlike index.json — carries every year) — it deliberately never
+    // narrows this list.
 
     const elevation = elevationOf(entry);
     if (filters.elevMin !== null && elevation < filters.elevMin) return false;
@@ -119,13 +126,13 @@ export function applyFilters(entries: IndexEntry[], filters: FilterState): Index
 export function countActiveFilters(filters: FilterState): number {
   let count = 0;
   for (const [key, value] of Object.entries(filters)) {
+    if (key === "year") continue; // drives the map layer, not this list — see applyFilters
     const empty =
       value === null ||
       value === "" ||
       value === false ||
       (Array.isArray(value) && value.length === 0);
     if (!empty) count++;
-    void key;
   }
   return count;
 }

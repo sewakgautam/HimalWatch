@@ -190,3 +190,31 @@ class TestRestoredHistoryFoldIn:
         manifest = build_static_bundle(data_dir)
 
         assert manifest["subjects_by_year"]["2025"] == 3
+
+    def test_pmtiles_source_includes_every_year_not_just_latest(self, tmp_path: Path):
+        # Regression: the web app's year slider had no effect because
+        # PMTiles used to be built from latest_gdf alone — dragging the
+        # slider to a non-latest year just filtered everything out client
+        # side, since that year's geometry was never in the tile source at
+        # all. The fix builds the tile source from every year combined
+        # (each feature keeps its own `year` property from the schema) so
+        # MapLibre can filter by year client-side instead.
+        data_dir = tmp_path / "data"
+        _write_fixture(data_dir / "glaciers" / "koshi-2024.geojson", "glaciers", "koshi", 2024, 2)
+        _write_fixture(data_dir / "glaciers" / "koshi-2025.geojson", "glaciers", "koshi", 2025, 3)
+
+        build_static_bundle(data_dir)
+
+        all_years_path = data_dir / "glaciers" / "latest" / "all-years.geojson"
+        assert all_years_path.exists()
+        all_years = gpd.read_file(all_years_path)
+        assert set(all_years["year"]) == {2024, 2025}
+        assert len(all_years) == 5  # 2 from 2024 + 3 from 2025, not just the latest 3
+
+        # And that file must never be picked up as a raw "{basin}-{year}"
+        # extraction input on a later run (it lives under latest/,
+        # excluded from _discover_extraction_files' glob) — a second run
+        # must still see exactly the same two years, not a third
+        # "all-years" one, and must not crash trying to parse it as one.
+        second_manifest = build_static_bundle(data_dir)
+        assert set(second_manifest["subjects_by_year"].keys()) == {"2024", "2025"}
