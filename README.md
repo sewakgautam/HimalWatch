@@ -59,10 +59,14 @@ pnpm install
 pnpm --filter @himalwatch/pipeline exec uv sync
 
 pnpm dev          # Next.js portal at localhost:3000
-pnpm pipeline load           # load Nepal boundaries + RGI baseline
-pnpm pipeline extract-lakes --basin koshi --year 2025 --dry-run
-pnpm pipeline extract-glaciers --basin koshi --year 2025 --dry-run
-pnpm pipeline build-static    # assemble data/ into the deploy-ready bundle
+
+# `pnpm run pipeline`, not bare `pnpm pipeline` — this pnpm version
+# reserves the bare word "pipeline" for its own unrelated pipelines
+# feature and errors (ERR_PNPM_NO_PIPELINES) without `run`.
+pnpm run pipeline load           # load Nepal boundaries + RGI baseline
+pnpm run pipeline extract-lakes --basin koshi --year 2025 --dry-run
+pnpm run pipeline extract-glaciers --basin koshi --year 2025 --dry-run
+pnpm run pipeline build-static    # assemble data/ into the deploy-ready bundle
 
 pnpm lint
 pnpm typecheck

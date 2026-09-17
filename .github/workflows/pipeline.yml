@@ -81,26 +81,32 @@ jobs:
 
       - run: pnpm --filter @himalwatch/schema build
 
+      # `pnpm run`, not bare `pnpm pipeline` — this pnpm version (12.x)
+      # reserves the bare word "pipeline" for its own pipelines feature
+      # (pnpm-workspace.yaml's `pipelines:` key) and errors with
+      # ERR_PNPM_NO_PIPELINES if none is declared there, rather than
+      # falling through to the "pipeline" script in package.json. Hit
+      # this same thing locally — same fix.
       - name: Load reference data (idempotent — skips if <30 days old)
-        run: pnpm pipeline load
+        run: pnpm run pipeline load
 
       # See the NotImplementedError note at the top of this file re: --dry-run.
       - name: Extract lakes
         run: >
-          pnpm pipeline extract-lakes
+          pnpm run pipeline extract-lakes
           --basin ${{ steps.vars.outputs.basin }}
           --year ${{ steps.vars.outputs.year }}
           --dry-run
 
       - name: Extract glaciers
         run: >
-          pnpm pipeline extract-glaciers
+          pnpm run pipeline extract-glaciers
           --basin ${{ steps.vars.outputs.basin }}
           --year ${{ steps.vars.outputs.year }}
           --dry-run
 
       - name: Build static bundle
-        run: pnpm pipeline build-static
+        run: pnpm run pipeline build-static
 
       - name: Build web portal
         run: pnpm --filter @himalwatch/web build
