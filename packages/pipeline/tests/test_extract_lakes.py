@@ -12,6 +12,8 @@ from himalwatch_pipeline.extract.lakes import (
     filter_lakes,
     match_to_baseline,
     otsu_threshold,
+    representative_point_for_basin,
+    synthetic_dry_run_lakes,
 )
 
 _CRS = "EPSG:32645"
@@ -268,3 +270,76 @@ class TestTargetGrid:
     def test_degenerate_bbox_still_returns_at_least_one_pixel(self):
         _, shape_ = _target_grid((86.8, 27.9, 86.8, 27.9))
         assert shape_ == (1, 1)
+
+
+class TestRepresentativePointForBasin:
+    """Regression coverage for the bug a human caught by asking "why am I
+    only seeing Koshi data": even after the CI workflow was fixed to loop
+    over all 4 basins, the synthetic --dry-run generators ignored which
+    basin they were given and always placed demo data at the same fixed
+    Everest-area point with Koshi/Solukhumbu labels. These pin down that
+    different basins now genuinely produce different locations.
+    """
+
+    def _write_reference_fixtures(self, tmp_path):
+        # Two small side-by-side basin polygons — reuses the same
+        # Nepal-scale coordinate convention as TestEnrichDistricts in
+        # test_loaders.py (real lng/lat, not a toy unit square).
+        west_basin = Polygon([(80, 28), (83, 28), (83, 29), (80, 29)])
+        east_basin = Polygon([(83, 28), (86, 28), (86, 29), (83, 29)])
+        basins = gpd.GeoDataFrame(
+            {"id": ["karnali", "koshi"], "name": ["Karnali", "Koshi"]},
+            geometry=[west_basin, east_basin],
+            crs="EPSG:4326",
+        )
+        west_district = Polygon([(80, 28), (83, 28), (83, 29), (80, 29)])
+        east_district = Polygon([(83, 28), (86, 28), (86, 29), (83, 29)])
+        districts = gpd.GeoDataFrame(
+            {
+                "name": ["Surkhet", "Solukhumbu"],
+                "province": ["Karnali", "Koshi"],
+                "basin": ["karnali", "koshi"],
+            },
+            geometry=[west_district, east_district],
+            crs="EPSG:4326",
+        )
+        basins.to_file(tmp_path / "basins.geojson", driver="GeoJSON")
+        districts.to_file(tmp_path / "districts.geojson", driver="GeoJSON")
+
+    def test_different_basins_produce_different_points_and_labels(self, tmp_path):
+        self._write_reference_fixtures(tmp_path)
+
+        karnali_lng, karnali_lat, karnali_province, karnali_district = (
+            representative_point_for_basin("karnali", tmp_path)
+        )
+        koshi_lng, koshi_lat, koshi_province, koshi_district = representative_point_for_basin(
+            "koshi", tmp_path
+        )
+
+        assert (karnali_lng, karnali_lat) != (koshi_lng, koshi_lat)
+        assert karnali_province == "Karnali"
+        assert karnali_district == "Surkhet"
+        assert koshi_province == "Koshi"
+        assert koshi_district == "Solukhumbu"
+        # The point must actually fall inside its own basin's bbox, not
+        # just be "some" different point.
+        assert 80 <= karnali_lng <= 83
+        assert 83 <= koshi_lng <= 86
+
+    def test_falls_back_to_fixed_point_when_reference_dir_missing(self, tmp_path):
+        empty_dir = tmp_path / "does-not-exist"
+        lng, lat, province, district = representative_point_for_basin("karnali", empty_dir)
+        assert (lng, lat, province, district) == (86.9, 27.9, "Koshi", "Solukhumbu")
+
+    def test_dry_run_lakes_for_different_basins_land_in_different_places(self, tmp_path):
+        self._write_reference_fixtures(tmp_path)
+
+        karnali_lakes = synthetic_dry_run_lakes("karnali", 2025, tmp_path)
+        koshi_lakes = synthetic_dry_run_lakes("koshi", 2025, tmp_path)
+
+        assert karnali_lakes.geometry.iloc[0].centroid.x != koshi_lakes.geometry.iloc[0].centroid.x
+        assert (karnali_lakes["province"] == "Karnali").all()
+        assert (koshi_lakes["province"] == "Koshi").all()
+        # ids must be unique across basins once merged into one bundle —
+        # they used to collide (both "lake:gen:dryrun0") before this fix.
+        assert set(karnali_lakes["id"]).isdisjoint(set(koshi_lakes["id"]))

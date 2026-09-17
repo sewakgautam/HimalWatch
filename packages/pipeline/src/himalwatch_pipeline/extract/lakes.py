@@ -505,15 +505,58 @@ def _generate_id(geom) -> str:
     return f"lake:gen:{digest}"
 
 
-def synthetic_dry_run_lakes(basin: str, year: int) -> gpd.GeoDataFrame:
-    """5 fake lakes for `extract-lakes --dry-run` — wires up the CLI and
-    static-bundle path end to end without a real Sentinel-2 composite.
-    Coordinates are within Nepal's Koshi basin regardless of the
-    requested `basin`, since this only needs to look plausible, not be
-    geographically correct for basins other than Koshi.
+def representative_point_for_basin(
+    basin: str, reference_dir: Path | None
+) -> tuple[float, float, str | None, str | None]:
+    """A real (lng, lat, province, district) inside the given basin, for
+    synthetic --dry-run data (both here and in extract/glaciers.py) that
+    needs *some* plausible location per basin rather than one fixed point
+    reused for every basin regardless of which was requested.
+
+    Falls back to a fixed Everest-area point (with Koshi/Solukhumbu
+    labels — only actually correct for basin="koshi") when reference data
+    isn't available yet, so `--dry-run` still works standalone before
+    `pipeline load` has ever run.
+    """
+    fallback = (86.9, 27.9, "Koshi", "Solukhumbu")
+    if reference_dir is None:
+        return fallback
+
+    basins_path = reference_dir / "basins.geojson"
+    districts_path = reference_dir / "districts.geojson"
+    if not basins_path.exists() or not districts_path.exists():
+        return fallback
+
+    basins_gdf = gpd.read_file(basins_path)
+    basin_row = basins_gdf[basins_gdf["id"] == basin]
+    if basin_row.empty:
+        return fallback
+
+    # representative_point(), not centroid() — centroid can fall outside
+    # a concave/multi-part basin polygon; this is guaranteed inside it.
+    point = basin_row.iloc[0].geometry.representative_point()
+
+    districts_gdf = gpd.read_file(districts_path)
+    containing = districts_gdf[districts_gdf.geometry.contains(point)]
+    if containing.empty:
+        return point.x, point.y, None, None
+    row = containing.iloc[0]
+    return point.x, point.y, row["province"], row["name"]
+
+
+def synthetic_dry_run_lakes(
+    basin: str, year: int, reference_dir: Path | None = None
+) -> gpd.GeoDataFrame:
+    """5 lakes clustered around a real point inside the requested basin,
+    for `extract-lakes --dry-run` — wires up the CLI and static-bundle
+    path end to end without a real Sentinel-2 composite. There's no real
+    lake baseline to borrow geometry from (unlike glaciers' RGI baseline —
+    see extract/glaciers.py's synthetic_dry_run_glaciers), so this places
+    a small synthetic cluster near representative_point_for_basin's
+    output instead of fabricating something at a fixed location.
     """
     now = datetime.now(UTC).isoformat()
-    base_lng, base_lat = 86.9, 27.9  # near Everest region, Koshi basin
+    base_lng, base_lat, province, district = representative_point_for_basin(basin, reference_dir)
     records = []
     for i in range(5):
         offset = i * 0.02
@@ -528,13 +571,13 @@ def synthetic_dry_run_lakes(basin: str, year: int) -> gpd.GeoDataFrame:
         )
         records.append(
             {
-                "id": f"lake:gen:dryrun{i}",
+                "id": f"lake:gen:dryrun-{basin}-{i}",
                 "icimod_id": None,
                 "name": None,
                 "basin": basin,
                 "sub_basin": None,
-                "province": "Koshi",
-                "district": "Solukhumbu",
+                "province": province,
+                "district": district,
                 "elevation_m": 4200 + i * 50,
                 "area_current_km2": 0.05 + i * 0.01,
                 "area_2000_km2": None,
@@ -568,7 +611,7 @@ def extract_lakes(
 
     if dry_run:
         logger.info("--dry-run: generating synthetic lakes instead of a real extraction")
-        result = synthetic_dry_run_lakes(basin, year)
+        result = synthetic_dry_run_lakes(basin, year, reference_dir)
         result.to_file(out_path, driver="GeoJSON")
         return len(result)
 

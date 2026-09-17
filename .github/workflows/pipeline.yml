@@ -24,11 +24,11 @@ on:
   workflow_dispatch:
     inputs:
       basin:
-        description: "Basin id to extract"
+        description: "Basin id to extract, or 'all' for every basin"
         required: false
-        default: "koshi"
+        default: "all"
         type: choice
-        options: [koshi, gandaki, karnali, mahakali]
+        options: [all, koshi, gandaki, karnali, mahakali]
       year:
         description: "Extraction year (blank = current year)"
         required: false
@@ -50,7 +50,17 @@ jobs:
           if [ -z "$YEAR" ]; then
             YEAR="$(date +%Y)"
           fi
-          echo "basin=${{ github.event.inputs.basin || 'koshi' }}" >> "$GITHUB_OUTPUT"
+          # Scheduled runs have no `inputs.basin` at all (empty string) —
+          # same as an explicit "all" dispatch: cover every basin, not
+          # just koshi. A manual dispatch naming one specific basin
+          # extracts just that one, for faster testing.
+          BASIN_INPUT="${{ github.event.inputs.basin }}"
+          if [ -z "$BASIN_INPUT" ] || [ "$BASIN_INPUT" = "all" ]; then
+            BASINS="koshi gandaki karnali mahakali"
+          else
+            BASINS="$BASIN_INPUT"
+          fi
+          echo "basins=$BASINS" >> "$GITHUB_OUTPUT"
           echo "year=$YEAR" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python 3.11 (uv)
@@ -92,18 +102,20 @@ jobs:
 
       # See the NotImplementedError note at the top of this file re: --dry-run.
       - name: Extract lakes
-        run: >
-          pnpm run pipeline extract-lakes
-          --basin ${{ steps.vars.outputs.basin }}
-          --year ${{ steps.vars.outputs.year }}
-          --dry-run
+        run: |
+          for basin in ${{ steps.vars.outputs.basins }}; do
+            echo "::group::Extract lakes — $basin"
+            pnpm run pipeline extract-lakes --basin "$basin" --year ${{ steps.vars.outputs.year }} --dry-run
+            echo "::endgroup::"
+          done
 
       - name: Extract glaciers
-        run: >
-          pnpm run pipeline extract-glaciers
-          --basin ${{ steps.vars.outputs.basin }}
-          --year ${{ steps.vars.outputs.year }}
-          --dry-run
+        run: |
+          for basin in ${{ steps.vars.outputs.basins }}; do
+            echo "::group::Extract glaciers — $basin"
+            pnpm run pipeline extract-glaciers --basin "$basin" --year ${{ steps.vars.outputs.year }} --dry-run
+            echo "::endgroup::"
+          done
 
       - name: Build static bundle
         run: pnpm run pipeline build-static

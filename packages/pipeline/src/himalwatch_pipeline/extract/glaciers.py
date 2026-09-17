@@ -16,7 +16,6 @@ from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
-from shapely.geometry import Polygon
 
 from .lakes import Composite
 from .lakes import build_composite as _build_composite_shared
@@ -198,67 +197,44 @@ def enrich(
 def synthetic_dry_run_glaciers(
     basin: str, year: int, reference_dir: Path | None = None
 ) -> gpd.GeoDataFrame:
-    """10 fake glaciers for `extract-glaciers --dry-run`, reusing the real
-    RGI ids from `reference_dir`/glaciers_baseline.geojson (when given) so
-    the static bundle builder's RGI-id matching has something real to
-    match against — a purely-fabricated id would make Session 4's
-    bundle-builder demo (and any human spot-checking a detail page) look
-    broken for the wrong reason.
+    """Up to 10 glaciers for `extract-glaciers --dry-run`, reusing real
+    RGI baseline rows (geometry, province, district, elevation — the
+    works) from `reference_dir`/glaciers_baseline.geojson for the
+    requested basin, with only `area_current_km2`/`confidence`/`year`
+    overridden to look like a fresh extraction.
+
+    Deliberately real geometry, not a fabricated grid of squares near one
+    fixed point — looping the CI workflow over all 4 basins would
+    otherwise place every basin's "demo" glaciers at the same Everest-area
+    coordinates with Koshi/Solukhumbu labels regardless of which basin
+    was requested, which is exactly the bug this replaced (caught when a
+    human asked "why am I only seeing Koshi data" and the answer turned
+    out to be two bugs, not one: the workflow only ever looped over one
+    basin, *and* even basin-looped, the synthetic generator ignored which
+    basin it was given).
     """
     now = datetime.now(UTC).isoformat()
-    rgi_ids: list[str] = []
     reference_path = reference_dir / "glaciers_baseline.geojson" if reference_dir else None
-    if reference_path is not None and reference_path.exists():
-        baseline = gpd.read_file(reference_path)
-        koshi_glaciers = baseline[baseline["basin"] == basin]
-        rgi_ids = koshi_glaciers["rgi_id"].head(10).tolist()
-    if not rgi_ids:
+    if reference_path is None or not reference_path.exists():
         logger.warning(
-            "No baseline glaciers found for basin=%r — run `pipeline load` first "
-            "for realistic dry-run ids; falling back to fabricated ids",
+            "No glaciers_baseline.geojson found — run `pipeline load` first for a "
+            "realistic --dry-run. Returning an empty GeoDataFrame for basin=%r.",
             basin,
         )
-        rgi_ids = [f"RGI60-15.{90000 + i}" for i in range(10)]
+        return gpd.GeoDataFrame(columns=["id"], geometry=[], crs="EPSG:4326")
 
-    base_lng, base_lat = 86.8, 27.95
-    records = []
-    for i, rgi_id in enumerate(rgi_ids):
-        offset = i * 0.015
-        cx, cy = base_lng + offset, base_lat - offset
-        poly = Polygon(
-            [
-                (cx - 0.003, cy - 0.003),
-                (cx + 0.003, cy - 0.003),
-                (cx + 0.003, cy + 0.003),
-                (cx - 0.003, cy + 0.003),
-            ]
-        )
-        records.append(
-            {
-                "id": f"glacier:{rgi_id}",
-                "rgi_id": rgi_id,
-                "name": None,
-                "basin": basin,
-                "sub_basin": None,
-                "province": "Koshi",
-                "district": "Solukhumbu",
-                "elevation_min_m": 5000.0,
-                "elevation_max_m": 6200.0,
-                "elevation_mean_m": 5600.0,
-                "area_current_km2": 2.5 - i * 0.05,
-                "area_2000_km2": 2.6 - i * 0.05,
-                "area_change_pct_since_2000": -3.8,
-                "debris_covered": False,
-                "sla_current_m": None,
-                "terminus_point": None,
-                "associated_lake_ids": [],
-                "confidence": "medium",
-                "year": year,
-                "updated_at": now,
-                "geometry": poly,
-            }
-        )
-    return gpd.GeoDataFrame(records, geometry="geometry", crs="EPSG:4326")
+    baseline = gpd.read_file(reference_path)
+    subset = baseline[baseline["basin"] == basin].head(10).copy()
+    if subset.empty:
+        logger.warning("No baseline glaciers found for basin=%r", basin)
+        return gpd.GeoDataFrame(columns=["id"], geometry=[], crs="EPSG:4326")
+
+    subset["area_current_km2"] = subset["area_2000_km2"] * 0.97  # simulated 3% retreat
+    subset["area_change_pct_since_2000"] = -3.0
+    subset["confidence"] = "medium"
+    subset["year"] = year
+    subset["updated_at"] = now
+    return subset
 
 
 def extract_glaciers(

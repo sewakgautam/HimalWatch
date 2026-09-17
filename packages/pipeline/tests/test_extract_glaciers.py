@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import geopandas as gpd
 import numpy as np
 from shapely.geometry import Polygon
@@ -9,6 +11,7 @@ from himalwatch_pipeline.extract.glaciers import (
     compute_ndsi,
     constrain_to_baseline,
     match_to_rgi,
+    synthetic_dry_run_glaciers,
 )
 
 _CRS = "EPSG:32645"
@@ -127,3 +130,80 @@ class TestMatchToRgi:
         )
         result = match_to_rgi(candidates, baseline, max_distance_m=500)
         assert list(result["label"]) == ["near"]
+
+
+class TestSyntheticDryRunGlaciers:
+    """Regression coverage for the same "why am I only seeing Koshi data"
+    bug as test_extract_lakes.py's TestRepresentativePointForBasin — this
+    generator used to ignore which basin it was given entirely and always
+    place fake glaciers near Everest. It should now reuse each basin's
+    own real RGI baseline rows (real geometry, real province/district).
+    """
+
+    def _write_baseline_fixture(self, tmp_path):
+        now = datetime.now(UTC).isoformat()
+        koshi_glacier = Polygon([(86.9, 27.9), (86.91, 27.9), (86.91, 27.91), (86.9, 27.91)])
+        karnali_glacier = Polygon([(81.5, 29.5), (81.51, 29.5), (81.51, 29.51), (81.5, 29.51)])
+        baseline = gpd.GeoDataFrame(
+            [
+                {
+                    "id": "glacier:RGI60-15.001",
+                    "rgi_id": "RGI60-15.001",
+                    "name": None,
+                    "basin": "koshi",
+                    "province": "Koshi",
+                    "district": "Solukhumbu",
+                    "area_2000_km2": 2.0,
+                    "confidence": "medium",
+                    "year": 2000,
+                    "updated_at": now,
+                    "geometry": koshi_glacier,
+                },
+                {
+                    "id": "glacier:RGI60-15.002",
+                    "rgi_id": "RGI60-15.002",
+                    "name": None,
+                    "basin": "karnali",
+                    "province": "Karnali",
+                    "district": "Surkhet",
+                    "area_2000_km2": 1.5,
+                    "confidence": "medium",
+                    "year": 2000,
+                    "updated_at": now,
+                    "geometry": karnali_glacier,
+                },
+            ],
+            geometry="geometry",
+            crs="EPSG:4326",
+        )
+        baseline.to_file(tmp_path / "glaciers_baseline.geojson", driver="GeoJSON")
+
+    def test_different_basins_return_their_own_real_glaciers(self, tmp_path):
+        self._write_baseline_fixture(tmp_path)
+
+        koshi = synthetic_dry_run_glaciers("koshi", 2025, tmp_path)
+        karnali = synthetic_dry_run_glaciers("karnali", 2025, tmp_path)
+
+        assert list(koshi["rgi_id"]) == ["RGI60-15.001"]
+        assert list(karnali["rgi_id"]) == ["RGI60-15.002"]
+        assert koshi.iloc[0]["province"] == "Koshi"
+        assert karnali.iloc[0]["province"] == "Karnali"
+        # Real baseline geometry carried through unchanged, not a
+        # fabricated square near a fixed point.
+        assert koshi.iloc[0].geometry.equals(
+            Polygon([(86.9, 27.9), (86.91, 27.9), (86.91, 27.91), (86.9, 27.91)])
+        )
+
+    def test_area_current_simulates_a_small_retreat_from_baseline(self, tmp_path):
+        self._write_baseline_fixture(tmp_path)
+        koshi = synthetic_dry_run_glaciers("koshi", 2025, tmp_path)
+        assert koshi.iloc[0]["area_current_km2"] < koshi.iloc[0]["area_2000_km2"]
+
+    def test_basin_with_no_baseline_glaciers_returns_empty(self, tmp_path):
+        self._write_baseline_fixture(tmp_path)
+        result = synthetic_dry_run_glaciers("mahakali", 2025, tmp_path)
+        assert result.empty
+
+    def test_missing_reference_dir_returns_empty_rather_than_raising(self, tmp_path):
+        result = synthetic_dry_run_glaciers("koshi", 2025, tmp_path / "does-not-exist")
+        assert result.empty
